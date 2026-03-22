@@ -62,13 +62,13 @@ public class RecorderApp : Form
         if (File.Exists(logFilePath)) try { File.Delete(logFilePath); } catch {}
 
         // FFmpeg command for 720p 60fps using Intel QuickSync (h264_qsv)
-        // Switched from 'ddagrab' to 'gdigrab' as ddagrab was missing in your FFmpeg build.
-        // gdigrab is universally available on Windows and should work fine at 720p 60fps.
+        // Using gdigrab for maximum compatibility.
+        // On Intel HD 610, QuickSync is the most efficient encoder.
         string audioArgs = chkAudio.Checked ? "-f wasapi -i default " : "";
 
         // We use -vf "scale=1280:720,format=nv12" because QSV requires nv12 input
-        // Using -f gdigrab -framerate 60 -i desktop
-        string args = string.Format("-loglevel info -f gdigrab -framerate 60 -i desktop {0}-c:v h264_qsv -global_quality 25 -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{1}\"",
+        // Added "-probesize 10M" to help FFmpeg start faster
+        string args = string.Format("-loglevel info -f gdigrab -framerate 60 -probesize 10M -i desktop {0}-c:v h264_qsv -global_quality 25 -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{1}\"",
             audioArgs, outputFilePath);
 
         ProcessStartInfo psi = new ProcessStartInfo
@@ -89,7 +89,15 @@ public class RecorderApp : Form
             ffmpegProcess.ErrorDataReceived += (s, ev) => {
                 if (!string.IsNullOrEmpty(ev.Data))
                 {
-                    File.AppendAllText(logFilePath, ev.Data + Environment.NewLine);
+                    // Use a simple retry for logging to handle minor lock contentions
+                    for (int i = 0; i < 3; i++) {
+                        try {
+                            File.AppendAllText(logFilePath, ev.Data + Environment.NewLine);
+                            break;
+                        } catch {
+                            System.Threading.Thread.Sleep(5);
+                        }
+                    }
                 }
             };
 
@@ -116,6 +124,9 @@ public class RecorderApp : Form
         btnStop.Enabled = false;
         chkAudio.Enabled = true;
 
+        // Give FFmpeg a second to finish writing the file
+        System.Threading.Thread.Sleep(500);
+
         if (File.Exists(outputFilePath))
         {
             lblStatus.Text = "Saved: " + Path.GetFileName(outputFilePath);
@@ -125,7 +136,7 @@ public class RecorderApp : Form
         {
             lblStatus.Text = "Error: File not created. Check log.";
             lblStatus.ForeColor = Color.Red;
-            MessageBox.Show("Recording file was not created. Check 'last_recording_log.txt' for errors.", "Recording Failed");
+            MessageBox.Show("Recording file was not created.\n\nPlease check 'last_recording_log.txt' for error details.", "Recording Failed");
         }
     }
 

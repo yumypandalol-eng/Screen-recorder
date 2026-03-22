@@ -4,7 +4,7 @@ A high-performance, minimal-resource screen recorder designed for gaming (like M
 
 ## Features:
 - **Intel QuickSync Acceleration**: Uses your Intel HD 610 GPU for hardware-accelerated H.264 encoding to keep your CPU free for games.
-- **Desktop Duplication (ddagrab)**: The fastest way to capture frames on Windows 10.
+- **GDI Capture (gdigrab)**: A highly compatible way to capture frames on Windows 10.
 - **720p 60fps**: Optimized for stable high frame rates.
 - **System Audio**: Captures game sounds directly.
 
