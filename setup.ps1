@@ -1,8 +1,8 @@
-$url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+$url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.zip"
 $zipFile = "ffmpeg.zip"
 $destFolder = "ffmpeg_temp"
 
-Write-Host "Downloading FFmpeg (this might take a minute)..." -ForegroundColor Cyan
+Write-Host "Downloading FFmpeg FULL build (this ensures all features are available)..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $url -OutFile $zipFile
 
 Write-Host "Extracting FFmpeg..." -ForegroundColor Cyan

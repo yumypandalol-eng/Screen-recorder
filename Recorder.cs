@@ -62,14 +62,13 @@ public class RecorderApp : Form
         if (File.Exists(logFilePath)) try { File.Delete(logFilePath); } catch {}
 
         // FFmpeg command for 720p 60fps using Intel QuickSync (h264_qsv)
-        // ddagrab is the fastest way to capture screen on Windows 10
-        // -f wasapi -i default captures the default recording device (often Mic).
-        // Note: Capturing system audio loopback automatically is hard without knowing the device name.
+        // Switched from 'ddagrab' to 'gdigrab' as ddagrab was missing in your FFmpeg build.
+        // gdigrab is universally available on Windows and should work fine at 720p 60fps.
         string audioArgs = chkAudio.Checked ? "-f wasapi -i default " : "";
 
         // We use -vf "scale=1280:720,format=nv12" because QSV requires nv12 input
-        // Added -loglevel info to help debugging
-        string args = string.Format("-loglevel info -f ddagrab -framerate 60 -i desktop {0}-c:v h264_qsv -global_quality 25 -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{1}\"",
+        // Using -f gdigrab -framerate 60 -i desktop
+        string args = string.Format("-loglevel info -f gdigrab -framerate 60 -i desktop {0}-c:v h264_qsv -global_quality 25 -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{1}\"",
             audioArgs, outputFilePath);
 
         ProcessStartInfo psi = new ProcessStartInfo
