@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 
 public class RecorderApp : Form
@@ -43,6 +45,30 @@ public class RecorderApp : Form
         };
     }
 
+    private string GetFfmpegProbeOutput(string ffmpegPath, string args)
+    {
+        ProcessStartInfo psi = new ProcessStartInfo
+        {
+            FileName = ffmpegPath,
+            Arguments = args,
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            CreateNoWindow = true
+        };
+        try {
+            using (Process p = Process.Start(psi)) {
+                StringBuilder sb = new StringBuilder();
+                p.ErrorDataReceived += (s, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
+                p.OutputDataReceived += (s, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
+                p.BeginErrorReadLine();
+                p.BeginOutputReadLine();
+                p.WaitForExit(5000);
+                return sb.ToString();
+            }
+        } catch { return ""; }
+    }
+
     private void BtnStart_Click(object sender, EventArgs e)
     {
         string baseDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -61,15 +87,49 @@ public class RecorderApp : Form
         // Clean up old log
         if (File.Exists(logFilePath)) try { File.Delete(logFilePath); } catch {}
 
-        // FFmpeg command for 720p 60fps using Intel QuickSync (h264_qsv)
-        // ddagrab is the fastest way to capture screen on Windows 10 (Desktop Duplication API)
-        // wasapi is the correct way to capture system audio loopback.
-        string audioArgs = chkAudio.Checked ? "-f wasapi -i default " : "";
+        // PROBE FOR BEST CAPTURE METHOD
+        string formats = GetFfmpegProbeOutput(ffmpegPath, "-formats");
+        string devices = GetFfmpegProbeOutput(ffmpegPath, "-devices");
 
-        // We use -vf "scale=1280:720,format=nv12" because QSV requires nv12 input
-        // Using -f ddagrab for high performance capture.
-        string args = string.Format("-loglevel info -f ddagrab -framerate 60 -i desktop {0}-c:v h264_qsv -global_quality 25 -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{1}\"",
-            audioArgs, outputFilePath);
+        File.AppendAllText(logFilePath, "--- PROBE START ---" + Environment.NewLine);
+
+        string videoInput = "gdigrab"; // DEFAULT SAFEST
+        string videoInputArgs = "-f gdigrab -framerate 60 -i desktop";
+
+        if (devices.Contains("ddagrab")) {
+            videoInput = "ddagrab";
+            videoInputArgs = "-f ddagrab -framerate 60 -i desktop";
+        }
+
+        File.AppendAllText(logFilePath, "Selected Video Input: " + videoInput + Environment.NewLine);
+
+        string audioInputArgs = "";
+        if (chkAudio.Checked) {
+            if (devices.Contains("wasapi")) {
+                // To capture system audio loopback on Windows 10, WASAPI needs the 'out_default' target.
+                audioInputArgs = "-f wasapi -i out_default ";
+            } else if (devices.Contains("dshow")) {
+                audioInputArgs = "-f dshow -i audio=\"virtual-audio-capturer\" "; // Very long shot
+            }
+        }
+
+        File.AppendAllText(logFilePath, "Selected Audio Args: " + audioInputArgs + Environment.NewLine);
+
+        // Encoder: Always try QSV first as requested for performance
+        string encoder = "h264_qsv";
+        string encoderArgs = "-c:v h264_qsv -global_quality 25";
+        string encoders = GetFfmpegProbeOutput(ffmpegPath, "-encoders");
+        if (!encoders.Contains("h264_qsv")) {
+            encoder = "libx264";
+            encoderArgs = "-c:v libx264 -preset ultrafast -crf 23";
+        }
+
+        File.AppendAllText(logFilePath, "Selected Encoder: " + encoder + Environment.NewLine);
+        File.AppendAllText(logFilePath, "--- PROBE END ---" + Environment.NewLine + Environment.NewLine);
+
+        // FINAL COMMAND
+        string args = string.Format("-loglevel info {0} {1}{2} -vf \"scale=1280:720,format=nv12\" -c:a aac -b:a 128k -y \"{3}\"",
+            videoInputArgs, audioInputArgs, encoderArgs, outputFilePath);
 
         ProcessStartInfo psi = new ProcessStartInfo
         {
@@ -78,25 +138,17 @@ public class RecorderApp : Form
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardInput = true,
-            RedirectStandardError = true // FFmpeg logs to stderr
+            RedirectStandardError = true
         };
 
         try
         {
             ffmpegProcess = new Process { StartInfo = psi };
-
-            // Log FFmpeg output to a file in the background
             ffmpegProcess.ErrorDataReceived += (s, ev) => {
-                if (!string.IsNullOrEmpty(ev.Data))
-                {
-                    // Use a simple retry for logging to handle minor lock contentions
+                if (!string.IsNullOrEmpty(ev.Data)) {
                     for (int i = 0; i < 3; i++) {
-                        try {
-                            File.AppendAllText(logFilePath, ev.Data + Environment.NewLine);
-                            break;
-                        } catch {
-                            System.Threading.Thread.Sleep(5);
-                        }
+                        try { File.AppendAllText(logFilePath, ev.Data + Environment.NewLine); break; }
+                        catch { System.Threading.Thread.Sleep(5); }
                     }
                 }
             };
@@ -107,7 +159,7 @@ public class RecorderApp : Form
             btnStart.Enabled = false;
             btnStop.Enabled = true;
             chkAudio.Enabled = false;
-            lblStatus.Text = "Recording... (Saving to same folder)";
+            lblStatus.Text = "Recording... (" + videoInput + " + " + encoder + ")";
             lblStatus.ForeColor = Color.Red;
         }
         catch (Exception ex)
@@ -119,21 +171,14 @@ public class RecorderApp : Form
     private void BtnStop_Click(object sender, EventArgs e)
     {
         StopFfmpeg();
-
         btnStart.Enabled = true;
         btnStop.Enabled = false;
         chkAudio.Enabled = true;
-
-        // Give FFmpeg a second to finish writing the file
         System.Threading.Thread.Sleep(1000);
-
-        if (File.Exists(outputFilePath))
-        {
+        if (File.Exists(outputFilePath)) {
             lblStatus.Text = "Saved: " + Path.GetFileName(outputFilePath);
             lblStatus.ForeColor = Color.Green;
-        }
-        else
-        {
+        } else {
             lblStatus.Text = "Error: File not created. Check log.";
             lblStatus.ForeColor = Color.Red;
             MessageBox.Show("Recording file was not created.\n\nPlease check 'last_recording_log.txt' for error details.", "Recording Failed");
@@ -142,18 +187,11 @@ public class RecorderApp : Form
 
     private void StopFfmpeg()
     {
-        if (ffmpegProcess != null && !ffmpegProcess.HasExited)
-        {
+        if (ffmpegProcess != null && !ffmpegProcess.HasExited) {
             try {
-                // Send 'q' to FFmpeg to stop it gracefully
                 ffmpegProcess.StandardInput.WriteLine("q");
-                if (!ffmpegProcess.WaitForExit(5000))
-                {
-                    ffmpegProcess.Kill();
-                }
-            } catch {
-                try { ffmpegProcess.Kill(); } catch {}
-            }
+                if (!ffmpegProcess.WaitForExit(5000)) ffmpegProcess.Kill();
+            } catch { try { ffmpegProcess.Kill(); } catch {} }
         }
     }
 

@@ -1,5 +1,5 @@
 # Use the 'Full' build from Gyan.dev which is guaranteed to include ddagrab and wasapi.
-# Since it's in .7z format, we will download a portable 7-Zip (7za.exe) first to extract it.
+# Since it's in .7z format, we will download a portable 7-Zip (7zr.exe) first to extract it.
 $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full.7z"
 $szUrl = "https://www.7-zip.org/a/7zr.exe"
 $szExe = "7zr.exe"
@@ -27,7 +27,8 @@ try {
 Write-Host "Extracting FFmpeg FULL build using 7-Zip..." -ForegroundColor Cyan
 if (Test-Path $szArchive) {
     # Extract using 7zr.exe: x = extract, -o = output directory, -y = assume yes to all
-    .\7zr.exe x $szArchive -offmpeg_temp -y | Out-Null
+    # Using 'x' to maintain folder structure
+    .\7zr.exe x $szArchive "-offmpeg_temp" -y | Out-Null
 
     # Find ffmpeg.exe inside the extracted folder
     $ffmpegExe = Get-ChildItem -Path $destFolder -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
