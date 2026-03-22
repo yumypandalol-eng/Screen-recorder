@@ -1,25 +1,19 @@
-# Use the 'essentials' zip link as it's the most reliable for direct download via PowerShell
-# Full builds are usually .7z which PowerShell cannot extract by default.
-$url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+# Use the BtbN GitHub release as it's a comprehensive 'master' build in .zip format.
+# These builds include all required modules like wasapi, ddagrab, and hardware encoders.
+$url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 $zipFile = "ffmpeg.zip"
 $destFolder = "ffmpeg_temp"
 
-Write-Host "Downloading FFmpeg Essentials (this is the most stable link)..." -ForegroundColor Cyan
+Write-Host "Downloading high-performance FFmpeg from GitHub (BtbN Builds)..." -ForegroundColor Cyan
 try {
     Invoke-WebRequest -Uri $url -OutFile $zipFile -ErrorAction Stop
 } catch {
-    Write-Host "Failed to download FFmpeg from Gyan.dev. Attempting fallback link..." -ForegroundColor Yellow
-    $fallbackUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-    try {
-        Invoke-WebRequest -Uri $fallbackUrl -OutFile $zipFile -ErrorAction Stop
-    } catch {
-        Write-Host "Both download links failed. Please check your internet connection." -ForegroundColor Red
-        Pause
-        exit
-    }
+    Write-Host "Failed to download FFmpeg. Please check your internet connection." -ForegroundColor Red
+    Pause
+    exit
 }
 
-Write-Host "Extracting FFmpeg (this may take a few seconds)..." -ForegroundColor Cyan
+Write-Host "Extracting FFmpeg (this may take a minute)..." -ForegroundColor Cyan
 if (Test-Path $zipFile) {
     Expand-Archive -Path $zipFile -DestinationPath $destFolder -Force
 
